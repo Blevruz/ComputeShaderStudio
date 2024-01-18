@@ -57,6 +57,11 @@ void main() {
 	data_1[p] = 0xFF0000AA + int( 1.0 + 99999.9*sin(float(x+float(step+y))/1000.0));
 }
 """
+
+## Variables. Currently syntax is NAME VALUE.
+@export var GLSL_variables : Array[String]
+# this works by turning the strings into defines and putting them just before the code
+
 ## Drag and drop your Sprite2D here.
 @export var data:Array[Node]
 
@@ -106,7 +111,7 @@ layout(binding = """+str(i+1)+""") buffer Data"""+str(i)+""" {
 };
 
 """
-	var GLSL_all : String = GLSL_header + GLSL_code
+	var GLSL_all : String = GLSL_header + "#define " + "\n#define ".join(GLSL_variables) + "\n\n" + GLSL_code
 	if print_generated_code == true:
 		print(GLSL_all)
 	
@@ -140,7 +145,7 @@ layout(binding = """+str(i+1)+""") buffer Data"""+str(i)+""" {
 		var input :PackedInt32Array = PackedInt32Array()
 		for i in range(WSX):
 			for j in range(WSY):
-				input.append(randi())
+				input.append(randi_range(0, 100))
 		var input_bytes :PackedByteArray = input.to_byte_array()
 		buffers.append(rd.storage_buffer_create(input_bytes.size(), input_bytes))
 
