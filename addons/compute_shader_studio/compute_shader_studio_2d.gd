@@ -113,7 +113,10 @@ layout(binding = """+str(i+1)+""") buffer Data"""+str(i)+""" {
 };
 
 """
-	var GLSL_all : String = GLSL_header + "\n#define ".join(GLSL_variables) + "\n\n" + GLSL_code
+	var GLSL_var_string : String = ""
+	if GLSL_variables.size() > 0:
+		GLSL_var_string = "\n#define " + "\n#define ".join(GLSL_variables) 
+	var GLSL_all : String = GLSL_header + GLSL_var_string + "\n\n" + GLSL_code
 	if print_generated_code == true:
 		print(GLSL_all)
 	
