@@ -39,6 +39,8 @@ layout(binding = 0) buffer Params {
 @export var print_generated_code:bool = false
 ## Do not execute compute shader at launch.
 @export var pause:bool = false
+## Use assigned object, if available, to initialize buffers
+@export var preset:bool = false
 ## Number of passes (synchronized code) needed.
 @export var nb_passes		: int = 1
 ## Workspace Size X, usually it matches the x size of your Sprite2D, TextureRect, etc image
@@ -149,6 +151,9 @@ layout(binding = """+str(i+1)+""") buffer Data"""+str(i)+""" {
 		var input_bytes :PackedByteArray = input.to_byte_array()
 		buffers.append(rd.storage_buffer_create(input_bytes.size(), input_bytes))
 
+	if preset:
+		preset_all_values()
+
 	# *********************
 	# * UNIFORMS CREATION *
 	# *********************
@@ -197,6 +202,12 @@ func display_values(disp : Node, values : PackedByteArray): # PackedInt32Array):
 	var image_format : int = Image.FORMAT_RGBA8
 	var image := Image.create_from_data(WSX, WSY, false, image_format, values)
 	disp.set_texture(ImageTexture.create_from_image(image))
+
+func preset_all_values():
+	for b in data.size():
+		var values = data[b].get_texture().get_image().get_data()
+		var size = values.size() #nb of bytes
+		rd.buffer_update(buffers[b], 0, size, values)	#TODO: check sufficient buffer size
 
 var step  : int = 0
 
