@@ -1,0 +1,91 @@
+[gd_scene load_steps=3 format=3 uid="uid://c8texsdnthy7j"]
+
+[ext_resource type="Script" path="res://addons/compute_shader_studio/compute_shader_studio_2d.gd" id="1_jrjbt"]
+[ext_resource type="Texture2D" uid="uid://demftcowdd5c6" path="res://examples/icon.svg" id="2_f411p"]
+
+[node name="Node2D" type="Node2D"]
+
+[node name="ComputeShaderStudio2D" type="Node" parent="." node_paths=PackedStringArray("data")]
+script = ExtResource("1_jrjbt")
+WSX = 256
+WSY = 256
+GLSL_code = "#define DEAD 0xFF473634
+#define TREE 0xFF18C747 
+#define FIRE 0xFF295BF0
+#define EMPTY 0xFF000000
+
+// data_0 is current step
+// data_1 is last step
+// data_2 is age
+
+void compute_next_step(uint x, uint y, uint p) {
+		if ( x > 0 && y > 0 && x < WSX-1 && y < WSY - 1) { // in sandbox
+			uint n_fire = 0 ; // Number of neighbors that are on fire
+			for (uint i = x-1; i <= x+1; i++) {
+				for (uint j = y-1; j <= y+1; j++) {
+					uint k = i + j * WSX;
+					if (k != p && data_0[k] == FIRE )
+						n_fire++;
+				}
+			}
+
+			if (data_0[p] == TREE) {
+				if (n_fire > 0)
+					data_1[p] = FIRE; // get set on fire
+				else 
+					data_1[p] = TREE;
+			} else if (data_0[p] == FIRE) {
+				if (data_2[p] > EMPTY + 255) { // fire too old 
+					data_1[p] = DEAD;
+					data_2[p] = EMPTY;
+				} else {
+					data_2[p] = data_2[p] + (255 / FIRE_STEPS);
+				}
+			} 
+		}
+}
+
+void main() {
+	uint x = gl_GlobalInvocationID.x;
+	uint y = gl_GlobalInvocationID.y;
+	uint p = x + y * WSX;
+	if ( step == 0 ) { // initialisation ************************
+		data_1[p] = EMPTY;
+		data_2[p] = EMPTY;
+
+		if (x < FIRE_ORIGIN_SIZE && y < FIRE_ORIGIN_SIZE) {
+			data_0[p] = FIRE ;
+		}
+		else if (data_0[p] < TREE_PERCENTAGE)
+			data_0[p] = TREE ;
+		else
+			data_0[p] = EMPTY;
+	} else { // in process *********************************
+		compute_next_step(x, y, p);
+		data_0[p] = data_1[p];
+	}
+}
+"
+GLSL_variables = Array[String](["TREE_PERCENTAGE 45", "FIRE_STEPS 5", "FIRE_ORIGIN_SIZE 5"])
+data = [NodePath("../buffer1"), NodePath("../buffer2"), NodePath("../buffer3")]
+
+[node name="Button" type="Button" parent="."]
+offset_left = 561.0
+offset_top = 604.0
+offset_right = 604.0
+offset_bottom = 635.0
+text = "Step"
+
+[node name="buffer1" type="Sprite2D" parent="."]
+position = Vector2(187, 310)
+texture = ExtResource("2_f411p")
+
+[node name="buffer2" type="Sprite2D" parent="."]
+position = Vector2(572, 310)
+texture = ExtResource("2_f411p")
+
+[node name="buffer3" type="Sprite2D" parent="."]
+position = Vector2(986, 310)
+texture = ExtResource("2_f411p")
+
+[connection signal="pressed" from="Button" to="ComputeShaderStudio2D" method="_on_button_step"]
