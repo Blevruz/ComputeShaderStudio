@@ -57,7 +57,7 @@ void main() {
 	if ( step == 0 ) { // initialisation ************************
 		if ( current_pass == 0 ) {
 			data_1[p] = DEAD ;
-			if (data_0[p] < 0 || x==0 || y==0 || x==WSX-1 || y==WSY-1)
+			if (data_0[p] < 50 || x==0 || y==0 || x==WSX-1 || y==WSY-1)
 				data_0[p] = DEAD ;
 			else
 				data_0[p] = ALIVE ;
