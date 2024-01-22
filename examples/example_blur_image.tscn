@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3 uid="uid://ctd05u8sj2yd3"]
+
+[ext_resource type="Script" path="res://addons/compute_shader_studio/compute_shader_studio_2d.gd" id="1_g3lf3"]
+[ext_resource type="Texture2D" uid="uid://demftcowdd5c6" path="res://examples/icon.svg" id="2_ege35"]
+
+[node name="Node2D" type="Node2D"]
+
+[node name="ComputeShaderStudio2D" type="Node" parent="." node_paths=PackedStringArray("data")]
+script = ExtResource("1_g3lf3")
+preset = true
+GLSL_code = "// data_0 is original image
+// data_1 is pixelated image
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint p = x + y * WSX;
+
+    int sum_red = 0;
+    int sum_green = 0;
+    int sum_blue = 0;
+    int sum_alpha = 0;
+
+    int real_blur_size = (BLUR_SIZE / 2) * 2 + 1; 
+
+    for (uint i = x-((real_blur_size-1)/2); i <= x+((real_blur_size-1)/2); i++) {
+        for (uint j = y-((real_blur_size-1)/2); j <= y+((real_blur_size-1)/2); j++) {
+            sum_red += ((data_0[i + j * WSX] & 0x000000FF) / (real_blur_size*real_blur_size));
+            sum_green += (((data_0[i + j * WSX] & 0x0000FF00)) / (real_blur_size*real_blur_size));
+            sum_blue += ((data_0[i + j * WSX] & 0x00FF0000) / (real_blur_size*real_blur_size));
+            sum_alpha += ((data_0[i + j * WSX] & 0xFF000000) / (real_blur_size*real_blur_size));
+        }
+    }
+    data_1[p] = (sum_alpha & 0xFF000000) + (sum_red & 0x000000FF) + (sum_green & 0x0000FF00) + (sum_blue & 0x00FF0000);
+}
+"
+GLSL_variables = Array[String](["BLUR_SIZE 5"])
+data = [NodePath("../buffer1"), NodePath("../buffer2")]
+
+[node name="buffer1" type="Sprite2D" parent="."]
+position = Vector2(328, 310)
+texture = ExtResource("2_ege35")
+
+[node name="buffer2" type="Sprite2D" parent="."]
+position = Vector2(856, 312)
+texture = ExtResource("2_ege35")
