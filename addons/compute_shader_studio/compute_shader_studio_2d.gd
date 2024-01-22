@@ -43,9 +43,9 @@ layout(binding = 0) buffer Params {
 @export var preset:bool = false
 ## Number of passes (synchronized code) needed.
 @export var nb_passes		: int = 1
-## Workspace Size X, usually it matches the x size of your Sprite2D, TextureRect, etc image
+## Workspace Size X. Only used (as generated Image width) if preset is off.
 @export var WSX				: int = 128
-## Workspace Size Y, usually it matches the y size of your Sprite2D, TextureRect, etc image
+## Workspace Size Y. Only used (as generated Image height) if preset is off.
 @export var WSY				: int = 128
 
 ## Write your GLSL code here
@@ -71,6 +71,8 @@ var rd 				: RenderingDevice
 var shader 			: RID
 var buffers 		: Array[RID]
 var buffer_params 	: RID
+var buffer_width 	: int
+var buffer_height 	: int
 
 var uniforms		: Array[RDUniform]
 #var uniform_2 		: RDUniform
@@ -101,7 +103,16 @@ func compile():
 	var nb_buffers : int = data.size()
 
 	# Create GLSL Header
-	GLSL_header += """
+	if preset :
+		buffer_width = data[0].get_texture().get_image().get_width()
+		buffer_height = data[0].get_texture().get_image().get_height()
+	
+		GLSL_header += """
+uint WSX="""+str(buffer_width)+""";"""+"""
+uint WSY="""+str(buffer_height)+""";
+"""
+	else :
+		GLSL_header += """
 uint WSX="""+str(WSX)+""";"""+"""
 uint WSY="""+str(WSY)+""";
 """
@@ -145,17 +156,10 @@ layout(binding = """+str(i+1)+""") buffer Data"""+str(i)+""" {
 	var input_params_bytes := input_params.to_byte_array()
 	buffer_params = rd.storage_buffer_create(input_params_bytes.size(), input_params_bytes)
 	
-	# Creation of nb_buffers Buffers of type Int32
-	for b in nb_buffers:
-		var input :PackedInt32Array = PackedInt32Array()
-		for i in range(WSX):
-			for j in range(WSY):
-				input.append(randi_range(0, 100))
-		var input_bytes :PackedByteArray = input.to_byte_array()
-		buffers.append(rd.storage_buffer_create(input_bytes.size(), input_bytes))
-
 	if preset:
 		preset_all_values()
+	else :
+		randomize_all_values()
 
 	# *********************
 	# * UNIFORMS CREATION *
@@ -203,16 +207,31 @@ func display_all_values():
 
 func display_values(disp : Node, values : PackedByteArray): # PackedInt32Array):
 	var image_format : int = Image.FORMAT_RGBA8
-	var image := Image.create_from_data(WSX, WSY, false, image_format, values)
+	var image : Image
+	if preset :
+		image = Image.create_from_data(buffer_width, buffer_height, false, image_format, values)
+	else :
+		image = Image.create_from_data(WSX, WSY, false, image_format, values)
 	disp.set_texture(ImageTexture.create_from_image(image))
 
 func preset_all_values():
 	for b in data.size():
-		var values = data[b].get_texture().get_image().get_data()
-		var size = values.size() #nb of bytes
-		rd.buffer_update(buffers[b], 0, size, values)	#TODO: check sufficient buffer size
+		var values:PackedByteArray = data[b].get_texture().get_image().get_data()
 
-var step  : int = 0
+		buffers.append(rd.storage_buffer_create(values.size(), values))
+
+func randomize_all_values():
+	for b in data.size():
+		var input:PackedInt32Array = PackedInt32Array()
+		for i in range(WSX):
+			for j in range(WSY):
+				input.append(randi_range(0, 100))
+		var input_bytes:PackedByteArray = input.to_byte_array()
+		
+		buffers.append(rd.storage_buffer_create(input_bytes.size(), input_bytes))
+
+
+var step : int = 0
 
 func compute():
 	if print_step == true && current_pass%nb_passes == 0:
@@ -226,7 +245,10 @@ func compute():
 	var compute_list : int = rd.compute_list_begin()
 	rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
-	rd.compute_list_dispatch(compute_list, WSX>>3, WSY>>3, 1)
+	if preset :
+		rd.compute_list_dispatch(compute_list, buffer_width>>3, buffer_height>>3, 1)
+	else :
+		rd.compute_list_dispatch(compute_list, WSX>>3, WSY>>3, 1)
 	rd.compute_list_end()
 	#######################################################################
 
