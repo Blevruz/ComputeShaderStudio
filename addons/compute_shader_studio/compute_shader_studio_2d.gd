@@ -216,7 +216,7 @@ func display_values(disp : Node, values : PackedByteArray): # PackedInt32Array):
 
 func preset_all_values():
 	for b in data.size():
-		var values:PackedByteArray = data[b].get_texture().get_image().get_data()
+		var values:PackedByteArray = data[0].get_texture().get_image().get_data()
 
 		buffers.append(rd.storage_buffer_create(values.size(), values))
 
