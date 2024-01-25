@@ -1,0 +1,140 @@
+[gd_scene load_steps=4 format=3 uid="uid://bmofrhy6g0ddb"]
+
+[ext_resource type="Script" path="res://addons/compute_shader_studio/compute_shader_studio_2d.gd" id="1_xc38l"]
+[ext_resource type="Texture2D" uid="uid://8kax4yeqokbf" path="res://examples/icon.png" id="2_et2f4"]
+[ext_resource type="Texture2D" uid="uid://et63v3f0078w" path="res://examples/erosion.png" id="2_lsgdu"]
+
+[node name="ExampleErosion" type="Node2D"]
+
+[node name="ComputeShaderStudio2D" type="Node" parent="." node_paths=PackedStringArray("data")]
+script = ExtResource("1_xc38l")
+preset = true
+GLSL_code = "// reproducing https://huw-man.github.io/Interactive-Erosion-Simulator-on-GPU/
+// (based on https://inria.hal.science/inria-00402079/document )
+// data_0 is water height 'd' (<< 16), terrain height 'b' (<< 8), suspended sediment amount 's' (<< 0) 
+// data_1 is outflow flux (f_L (<< 24), f_R (<< 16), f_T (<< 8), f_B)
+// data_2 is velocity vector (u (<< 8), v (<< 0))
+// data_3 is the update buffer for data_0
+// data_4 is the update buffer for data_1
+// data_5 is the update buffer for data_2
+#define 	WATER_OFFSET		16
+#define		TERRAIN_OFFSET		8
+#define		SEDIMENT_OFFSET		0
+
+#define		FLUX_LEFT_OFFSET	24
+#define		FLUX_RIGHT_OFFSET	16
+#define		FLUX_TOP_OFFSET		8
+#define		FLUX_BOTTOM_OFFSET	0
+
+#define 	MAXIMUM_WATER_LEVEL	0xF0	// limited to avoid overflow during flow simulation
+#define		FLUX_THRESHOLD		0x10
+#define		EVAPORATION		2
+
+#define	l	1
+#define	g	10
+#define	A	1
+#define Kc	5
+
+
+void WaterIncrement(uint p) {
+	// increase water level uniformly up to a maximum
+	if (((data_0[p] >> WATER_OFFSET) & 0xFF) < MAXIMUM_WATER_LEVEL ) {
+		data_3[p] = (data_0[p] & ~(0xFF << WATER_OFFSET)) | ((data_0[p] + (1 << WATER_OFFSET)) & (0xFF << WATER_OFFSET));
+	}
+}
+
+void FlowSimulation(uint p) {
+	// update flux map
+	uint height_p = ((data_0[p] >> WATER_OFFSET) & 0xFF) + ((data_0[p] >> TERRAIN_OFFSET) & 0xFF);
+
+	uint p_left	= (p/WSX)*WSY + (p-1)%WSX;
+	uint p_right	= (p/WSX)*WSY + (p+1)%WSX;
+	uint p_top	= (p-WSX)%(WSX*WSY);
+	uint p_bottom	= (p+WSX)%(WSX*WSY);
+
+	data_4[p] = 0x00000000;
+
+	if (height_p > ((data_0[p_right] >> WATER_OFFSET) & 0xFF) + ((data_0[p_right] >> TERRAIN_OFFSET) & 0xFF) && ((data_1[p] >> FLUX_RIGHT_OFFSET) & 0xFF) < 0xFF ) {
+		data_4[p] = ((((data_1[p] >> FLUX_RIGHT_OFFSET) + 1) & 0xFF) << FLUX_RIGHT_OFFSET) | data_4[p];
+	} else if (((data_1[p] >> FLUX_RIGHT_OFFSET) & 0xFF) > 0){
+		data_4[p] = ((((data_1[p] >> FLUX_RIGHT_OFFSET) - 1) & 0xFF) << FLUX_RIGHT_OFFSET) | data_4[p];
+	}
+
+	if (height_p > ((data_0[p_left] >> WATER_OFFSET) & 0xFF) + ((data_0[p_left] >> TERRAIN_OFFSET) & 0xFF) && ((data_1[p] >> FLUX_LEFT_OFFSET) & 0xFF) < 0xFF ) {
+		data_4[p] = ((((data_1[p] >> FLUX_LEFT_OFFSET) + 1) & 0xFF) << FLUX_LEFT_OFFSET) | data_4[p];
+	} else if (((data_1[p] >> FLUX_LEFT_OFFSET) & 0xFF) > 0){
+		data_4[p] = ((((data_1[p] >> FLUX_LEFT_OFFSET) - 1) & 0xFF) << FLUX_LEFT_OFFSET) | data_4[p];
+	}
+
+	if (height_p > ((data_0[p_top] >> WATER_OFFSET) & 0xFF) + ((data_0[p_top] >> TERRAIN_OFFSET) & 0xFF) && ((data_1[p] >> FLUX_TOP_OFFSET) & 0xFF) < 0xFF ) {
+		data_4[p] = ((((data_1[p] >> FLUX_TOP_OFFSET) + 1) & 0xFF) << FLUX_TOP_OFFSET) | data_4[p];
+	} else if (((data_1[p] >> FLUX_TOP_OFFSET) & 0xFF) > 0){
+		data_4[p] = ((((data_1[p] >> FLUX_TOP_OFFSET) - 1) & 0xFF) << FLUX_TOP_OFFSET) | data_4[p];
+	}
+
+	if (height_p > ((data_0[p_bottom] >> WATER_OFFSET) & 0xFF) + ((data_0[p_bottom] >> TERRAIN_OFFSET) & 0xFF) && ((data_1[p] >> FLUX_BOTTOM_OFFSET) & 0xFF) < 0xFF ) {
+		data_4[p] = ((((data_1[p] >> FLUX_BOTTOM_OFFSET) + 1) & 0xFF) << FLUX_BOTTOM_OFFSET) | data_4[p];
+	} else if (((data_1[p] >> FLUX_BOTTOM_OFFSET) & 0xFF) > 0){
+		data_4[p] = ((((data_1[p] >> FLUX_BOTTOM_OFFSET) - 1) & 0xFF) << FLUX_BOTTOM_OFFSET) | data_4[p];
+	}
+
+	// apply flux map
+	uint spent_water = 0;
+	uint gained_water = 0;
+	if (((data_4[p] >> FLUX_LEFT_OFFSET) & 0xFF) > FLUX_THRESHOLD)	spent_water = spent_water + ((data_4[p] >> FLUX_LEFT_OFFSET) & 0xFF)/8;
+	if (((data_4[p] >> FLUX_RIGHT_OFFSET) & 0xFF) > FLUX_THRESHOLD)	spent_water = spent_water + ((data_4[p] >> FLUX_RIGHT_OFFSET) & 0xFF)/8;
+	if (((data_4[p] >> FLUX_TOP_OFFSET) & 0xFF) > FLUX_THRESHOLD)	spent_water = spent_water + ((data_4[p] >> FLUX_TOP_OFFSET) & 0xFF)/8;
+	if (((data_4[p] >> FLUX_BOTTOM_OFFSET) & 0xFF) > FLUX_THRESHOLD)	spent_water = spent_water + ((data_4[p] >> FLUX_BOTTOM_OFFSET) & 0xFF)/8;
+	if (((data_3[p] >> WATER_OFFSET) & 0xFF) < MAXIMUM_WATER_LEVEL) {
+		if (((data_4[p_left] >> FLUX_RIGHT_OFFSET) & 0xFF) > FLUX_THRESHOLD)	gained_water = gained_water + ((data_4[p_left] >> FLUX_RIGHT_OFFSET) & 0xFF);
+		if (((data_4[p_right] >> FLUX_LEFT_OFFSET) & 0xFF) > FLUX_THRESHOLD)	gained_water = gained_water + ((data_4[p_right] >> FLUX_LEFT_OFFSET) & 0xFF)/8;
+		if (((data_4[p_top] >> FLUX_BOTTOM_OFFSET) & 0xFF) > FLUX_THRESHOLD)	gained_water = gained_water + ((data_4[p_top] >> FLUX_BOTTOM_OFFSET) & 0xFF)/8;
+		if (((data_4[p_bottom] >> FLUX_TOP_OFFSET) & 0xFF) > FLUX_THRESHOLD)	gained_water = gained_water + ((data_4[p_bottom] >> FLUX_TOP_OFFSET) & 0xFF)/8;
+	}
+
+	if (gained_water > (spent_water + EVAPORATION)) {
+		for (int i = 0; i < gained_water - (spent_water + EVAPORATION) && ((data_3[p] >> WATER_OFFSET) & 0xFF) < 0xFF ; i++)
+			data_3[p] = ((((data_3[p] >> WATER_OFFSET) + 1) & 0xFF) << WATER_OFFSET) | (data_3[p] & ~(0xFF << WATER_OFFSET));
+	} else	
+		for (int i = 0; i < (spent_water + EVAPORATION) - gained_water && ((data_3[p] >> WATER_OFFSET) & 0xFF) > 0; i++)
+			data_3[p] = ((((data_3[p] >> WATER_OFFSET) - 1) & 0xFF) << WATER_OFFSET) | (data_3[p] & ~(0xFF << WATER_OFFSET));
+}
+
+void ErosionDeposition(uint p) {
+}
+
+// Write your code HERE
+void main() {
+	uint x = gl_GlobalInvocationID.x;
+	uint y = gl_GlobalInvocationID.y;
+	uint p = x + y * WSX;
+	if (step == 0) {	//Initialization: set velocity and flux to 0
+		data_1[p] = 0;
+		data_2[p] = 0;
+		data_4[p] = 0;
+		data_5[p] = 0;
+	}
+	WaterIncrement(p);
+	FlowSimulation(p);
+	
+	data_0[p] = data_3[p];
+	data_1[p] = data_4[p];
+	data_2[p] = data_5[p];
+}
+"
+data = [NodePath("../buffer1"), NodePath("../buffer2"), NodePath("../buffer3"), null, null, null]
+
+[node name="buffer1" type="Sprite2D" parent="."]
+position = Vector2(323, 319)
+scale = Vector2(5, 5)
+texture = ExtResource("2_lsgdu")
+
+[node name="buffer2" type="Sprite2D" parent="."]
+position = Vector2(770, 122)
+scale = Vector2(1.84375, 1.84375)
+texture = ExtResource("2_et2f4")
+
+[node name="buffer3" type="Sprite2D" parent="."]
+position = Vector2(776, 378)
+scale = Vector2(1.82812, 1.82812)
+texture = ExtResource("2_et2f4")
