@@ -13,3 +13,8 @@
 
 When not in preset mode, each value / pixel is set with `randi_range()` to a random value between 0 and 100.
 When in preset mode, the buffer is initialized with the first image in Data.
+
+# Setting GLSL constants
+
+During shader compilation (on loading the scene), strings from the `GLSL_variables` array are added after the GLSL header. This can be used as an easier way to modify values in the editor UI.
+Runtime modification will not work as the plugin current does not support re-compiling.
