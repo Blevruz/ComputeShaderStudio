@@ -1,0 +1,60 @@
+[gd_scene load_steps=3 format=3 uid="uid://bh4rjb4k6eu3b"]
+
+[ext_resource type="Script" path="res://addons/compute_shader_studio/compute_shader_studio_2d.gd" id="1_u0s6d"]
+[ext_resource type="Texture2D" uid="uid://demftcowdd5c6" path="res://examples/icon.svg" id="2_lsy1j"]
+
+[node name="Node2D" type="Node2D"]
+
+[node name="ComputeShaderStudio2D" type="Node" parent="." node_paths=PackedStringArray("data")]
+script = ExtResource("1_u0s6d")
+WSX = 256
+WSY = 256
+GLSL_code = "#define BRICK 0xFF295BF0
+#define LINE 0xFF000000
+
+// data_0 is current step
+// data_1 is last step
+
+void compute_next_step(uint x, uint y, uint p) {
+    if ( x >= 0 && y >= 0 && x < WSX && y < WSY) { // in sandbox
+        data_1[p] = data_0[p];
+        if (mod(y, BRICK_HEIGHT) == 1) {
+            data_1[p] = LINE;
+        }
+        else if (y == step) {
+            if ((data_0[(x-1) + (y-1) * WSX] == LINE && data_0[x + (y-1) * WSX] == LINE && data_0[(x+1) + (y-1) * WSX] == LINE && data_0[p] > 100 - BRICK_RATE) || (data_0[(x-1) + (y-1) * WSX] == BRICK && data_0[x + (y-1) * WSX] == LINE && data_0[(x+1) + (y-1) * WSX] == BRICK)){
+                data_1[p] = LINE;
+            }
+            else {
+                data_1[p] = BRICK;
+            }
+        }
+    }
+}
+
+void main() {
+	uint x = gl_GlobalInvocationID.x;
+	uint y = gl_GlobalInvocationID.y;
+	uint p = x + y * WSX;
+	if ( step == 0 ) { // initialisation ************************
+		data_1[p] = LINE;
+
+        /* if (y == 0)
+			data_0[p] = LINE;
+		else
+			data_0[p] = BRICK; */
+	} else if (step < WSY){ // in process *********************************
+		compute_next_step(x, y, p);
+		data_0[p] = data_1[p];
+	}
+}"
+GLSL_variables = Array[String](["BRICK_HEIGHT 30", "BRICK_RATE 1"])
+data = [NodePath("../buffer1"), NodePath("../buffer2")]
+
+[node name="buffer1" type="Sprite2D" parent="."]
+position = Vector2(382, 310)
+texture = ExtResource("2_lsy1j")
+
+[node name="buffer2" type="Sprite2D" parent="."]
+position = Vector2(767, 310)
+texture = ExtResource("2_lsy1j")
